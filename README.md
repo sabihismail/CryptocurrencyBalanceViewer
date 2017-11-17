@@ -25,8 +25,10 @@ key.**
 Also make sure the standard government currency is correct.
 4. For 'db-config.js', edit the data for the MongoDB server to match your
 server information.
-5. You're all set! Double click 'run.bat' to start the MongoDB server and
-then the Node.JS server.
+
+## Running the Program
+1. Double click 'run.bat' to start the MongoDB server and the Node.JS server.
+2. Go to http://localhost:3000/bittrex/ to view the data.
 
 ## Built With
 * [Node.JS](https://nodejs.org/) - Open source server framework
