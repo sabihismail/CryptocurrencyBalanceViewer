@@ -1,13 +1,11 @@
-const span = 'day';
-
 /**
- * Retrieves and parses latest data required for chart creation.
+ * Retrieves all coins that exist.
  *
  * Uses the constant {@link span} to decide how much data to return. By default, this is 'day' or 24 hours worth of
  * information.
  */
 $.ajax({
-  url: window.location.href + 'data?span=' + span,
+  url: window.location.href + 'api/currency/all',
   cache: false,
   dataType: 'json',
   success: function (json) {
@@ -15,93 +13,156 @@ $.ajax({
   }
 });
 
-/**
- * Creates JSON object with only necessary data for chart creation.
- *
- * @param data JSON data returned from data request.
- * @returns {Array} Newly constructed array with all necessary data.
- */
-const modifyData = function (data) {
-  let obj = [];
+function addData(currency) {
+  function createChart() {
+    const start = new Date();
 
-  for (let i = 0; i < data.length; i++) {
-    const curValues = data[i]['values'];
+    Highcharts.stockChart('line-chart', {
+      chart: {
+        events: {
+          load: function () {
+            const allData = new Map();
 
-    const key = data[i]['_id'];
-    const values = [];
+            const xData = this.series[0].processedXData;
+            for (let i = 0; i < this.series.length; i++) {
+              if (this.series[i].userOptions.name.includes('Navigator')) {
+                continue;
+              }
 
-    for (let j = 0; j < curValues.length; j++) {
-      values.push([
-        curValues[j]['time'] * 1000,
-        curValues[j]['price_fiat']
-      ])
-    }
+              for (let j = 0; j < xData.length; j++) {
+                const y = this.series[i].processedYData[j];
+                const x = xData[j];
 
-    obj.push({
-      key: key,
-      values: values
-    })
+                allData.has(x) ? allData.set(x, allData.get(x) + y) : allData.set(x, y);
+              }
+            }
+
+            this.addSeries({
+              name: 'TOTAL',
+              data: Array.from(allData),
+              yAxis: 'all'
+            }, false);
+
+            this.redraw();
+          }
+        },
+        zoomType: 'x'
+      },
+
+      rangeSelector: {
+        buttons: [{
+          count: 30,
+          type: 'minute',
+          text: '30M'
+        }, {
+          count: 1,
+          type: 'hour',
+          text: '1H'
+        }, {
+          count: 6,
+          type: 'hour',
+          text: '6H'
+        }, {
+          count: 12,
+          type: 'hour',
+          text: '12H'
+        }, {
+          count: 1,
+          type: 'day',
+          text: '1D'
+        }, {
+          count: 1,
+          type: 'week',
+          text: '1W'
+        }, {
+          type: 'all',
+          text: 'All'
+        }],
+        inputEnabled: true,
+        selected: 5
+      },
+
+      yAxis: [{
+        labels: {
+          align: 'right',
+          x: -3
+        },
+        height: '55%',
+        lineWidth: 2
+      }, {
+        id: 'all',
+        labels: {
+          align: 'right',
+          x: -3
+        },
+        top: '65%',
+        height: '35%',
+        offset: 0,
+        lineWidth: 2
+      }],
+
+      title: {
+        text: 'Currency tracker for: ' + currency.join(', ')
+      },
+
+      tooltip: {
+        formatter: function () {
+          let s = '<b>' + moment(new Date(this.x)).format('MMMM Do YYYY, h:mm:ss a') + '</b>';
+
+          $.each(this.points, function () {
+            if (this.y !== 0) {
+              s += '<br/>';
+
+              if (this.series.name === 'TOTAL') {
+                s += '<b>' + 'Total: ' + Highcharts.numberFormat(this.y, 2) + '</b>';
+              } else {
+                s += this.series.name + ': ' + Highcharts.numberFormat(this.y, 2);
+              }
+            }
+          });
+
+          return s;
+        }
+      },
+
+      series: seriesOptions
+    });
   }
 
-  return obj;
-};
+  function parseData(data) {
+    const newData = [];
+    const val = data['values'];
 
-/**
- * Creates stacked area chart using the data passed as a parameter.
- *
- * Data is first edited by {@link #modifyData}.
- *
- * @param data Data which will be parsed and added to chart.
- */
-const addData = function (data) {
-  data = modifyData(data);
+    for (let i = 0; i < val.length; i++) {
+      const time = val[i]['time'] * 1000;
+      const price_fiat = val[i]['price_fiat'];
 
-  console.log(data);
+      if (i === val.length - 1) {
+        newData.push([time, { y: price_fiat, dataLabels: { enabled: true, format: '{y}' } }]);
+      } else {
+        newData.push([time, price_fiat]);
+      }
+    }
 
-  const margin = {right: 100};
-  const timeFormat = d3.time.format("%H:%M:%S");
+    return newData;
+  }
 
-  const xMin = d3.min(data, function (d) {
-    return Math.min(d[0]);
-  });
-  const xMax = d3.max(data, function (d) {
-    return Math.max(d[0]);
-  });
-  const yMin = d3.min(data, function (d) {
-    return Math.min(d[1]);
-  });
-  const yMax = d3.max(data, function (d) {
-    return Math.max(d[1]);
-  });
+  const seriesOptions = [];
+  let seriesCounter = 0;
+  $.each(currency, function (i, name) {
+    $.getJSON(window.location.href + '/api/currency?coin=' + name, function (data) {
+      data = parseData(data);
 
-  nv.addGraph(function () {
-    const chart = nv.models.stackedAreaChart()
-      .x(function (d) {
-        return d[0];
-      })
-      .y(function (d) {
-        return d[1];
-      })
-      .margin(margin)
-      .useInteractiveGuideline(true)
-      .rightAlignYAxis(true)
-      .showControls(true)
-      .clipEdge(true);
+      seriesOptions[i] = {
+        name: name,
+        data: data
+      };
 
-    chart.xAxis.tickFormat(function (d) {
-      timeFormat(new Date(d));
+      seriesCounter += 1;
+
+      if (seriesCounter === currency.length) {
+        createChart();
+      }
     });
-    chart.forceY([xMin, xMax]);
-
-    chart.yAxis.tickFormat(d3.format(',.2f'));
-    chart.forceY([yMin, yMax]);
-
-    d3.select('#line-chart')
-      .datum(data)
-      .call(chart);
-
-    nv.utils.windowResize(chart.update);
-
-    return chart;
-  })
-};
+  });
+}

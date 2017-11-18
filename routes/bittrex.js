@@ -10,16 +10,23 @@ const collection = dbConfig.data(document)['collections'][0];
  * Returns the main page for the chart data.
  */
 router.get('/', function (req, res) {
-  res.render('bittrex', { title: 'Bittrex Data Chart' });
+  res.render('bittrex');
 });
 
 /**
- * Returns data based on the parameter 'span'.
- *
- * If 'span' is empty, the default amount of information returned is the past 24 hours.
+ * Returns data based on the parameter 'coin'.
  */
-router.get('/data', function(req, res) {
-  const span = req.query.span;
+router.get('/api/currency', function(req, res) {
+  const coin = req.query.coin;
+
+  if (coin === undefined) {
+    const error = {
+      success: false,
+      message: 'Missing coin parameter'
+    };
+
+    return res.status(400).send(error);
+  }
 
   const MongoClient = require('mongodb').MongoClient;
   MongoClient.connect(dbConfig.url(document), function (err, db) {
@@ -27,8 +34,7 @@ router.get('/data', function(req, res) {
       return console.log(err);
     }
 
-    console.log("Connected to server.");
-    getData(db, span, function (data) {
+    getSpecificCoin(db, coin, function (data) {
       res.json(data);
 
       db.close();
@@ -37,57 +43,42 @@ router.get('/data', function(req, res) {
 });
 
 /**
- * Returns the time in seconds in Unix time which indicates what time the data should be retrieved from based on the
- * inputted 'span' parameter.
- *
- * @param span The amount of information the user requested.
- * @returns {number} The amount of time in seconds since Unix time.
+ * Returns all coins but not their information.
  */
-const retrieveOldTime = function (span) {
-  let oldTime = Math.floor(new Date().getTime() / 1000);
+router.get('/api/currency/all', function(req, res) {
+  const MongoClient = require('mongodb').MongoClient;
+  MongoClient.connect(dbConfig.url(document), function (err, db) {
+    if (err) {
+      return console.log(err);
+    }
 
-  if (span === undefined) {
-    span = 'day';
-  } else {
-    span = span.toLowerCase();
-  }
+    getAllCoins(db, function (data) {
+      res.json(data);
 
-  if (span === 'week') {
-    oldTime -= 60 * 60 * 24 * 7;
-  } else if (span === 'month') {
-    oldTime -= 60 * 60 * 24 * 30;
-  } else if (span === 'year') {
-    oldTime -= 60 * 60 * 24 * 365;
-  } else {
-    oldTime -= 60 * 60 * 24;
-  }
+      db.close();
+    })
+  });
+});
 
-  return oldTime;
+/**
+ * Returns all coins with data stored in database.
+ *
+ * @param db MongoDB database instance.
+ * @param callback Function to handle the data returned.
+ */
+const getAllCoins = function (db, callback) {
+  db.collection(collection).distinct("_id").then(callback);
 };
 
 /**
- * Retrieves data from the bittrex database and returns that data in JSON format.
+ * Returns all data about a certain coin.
  *
  * @param db MongoDB database instance.
- * @param span The amount of data to return passed in as a parameter from the user.
- * @param callback A function that is to handle the data retrieved.
+ * @param coin The coin that is being requested.
+ * @param callback Function to handle the data returned.
  */
-const getData = function (db, span, callback) {
-  const oldTime = retrieveOldTime(span);
-
-  db.collection(collection).aggregate({
-    $project: {
-      values: {
-        $filter: {
-          input: "$values",
-          as: "value",
-          cond: { $gte: ["$$value.time", oldTime] }
-        }
-      }
-    }
-  }, function (err, res) {
-    return callback(res);
-  });
+const getSpecificCoin = function (db, coin, callback) {
+  db.collection(collection).findOne({ "_id" : coin.toUpperCase() }).then(callback);
 };
 
 module.exports = router;

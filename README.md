@@ -1,8 +1,8 @@
 # Cryptocurrency Balance Viewer with Bittrex.com Support
 This application stores data about the worth of all stored coins on 
 your Bittrex.com account. Included is a data visualizer which allows
-you to view your wallet's ups-and-downs in a convenient stacked area
-line graph.
+you to view your wallet's ups-and-downs in a convenient Highstocks
+chart.
 
 This application is created in Node.JS and data is stored in a MongoDB
 database.
@@ -34,8 +34,11 @@ server information.
 * [Node.JS](https://nodejs.org/) - Open source server framework
 * [ExpressJS](https://expressjs.com/) - Web framework for Node.JS
 * [request](https://github.com/request/request) - HTTP request client
-* [d3](https://d3js.org/) - Data manipulation JavaScript library
-* [nvd3](http://nvd3.org/) - Advanced chart creation JavaScript library
+* [JQuery](https://jquery.com/) - Simplifies JavaScript client side development
+* [Moment.js](http://momentjs.com/) - Time/Date parsing/formatting library
+* [Highstock JS](https://www.highcharts.com/products/highstock/) - Elegant
+data charting and viewing. Licence: 
+[Creative Commons (CC) Attribution-NonCommercial](https://creativecommons.org/licenses/by-nc/3.0/)
 * [node-schedule](https://github.com/node-schedule/node-schedule) Node.JS
 scheduler
 * [pug](https://pugjs.org/) - HTML template engine for Node.JS

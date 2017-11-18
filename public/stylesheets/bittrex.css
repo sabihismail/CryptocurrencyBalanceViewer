@@ -4,8 +4,8 @@ html, body {
   overflow: hidden;
 }
 
-svg {
-  position: fixed;
+#line-chart {
+  position: absolute;
   top: 0;
   left: 0;
   height: 100%;
