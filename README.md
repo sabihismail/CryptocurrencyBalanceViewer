@@ -39,6 +39,6 @@ server information.
 * [Highstock JS](https://www.highcharts.com/products/highstock/) - Elegant
 data charting and viewing. Licence: 
 [Creative Commons (CC) Attribution-NonCommercial](https://creativecommons.org/licenses/by-nc/3.0/)
-* [node-schedule](https://github.com/node-schedule/node-schedule) Node.JS
+* [node-schedule](https://github.com/node-schedule/node-schedule) - Node.JS
 scheduler
 * [pug](https://pugjs.org/) - HTML template engine for Node.JS
