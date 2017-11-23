@@ -1,4 +1,5 @@
 const schedule = require('node-schedule');
+const backup = require('mongodb-backup');
 const crypto = require('crypto');
 const request = require('request');
 const dbConfig = require('./db-config');
@@ -8,8 +9,8 @@ const urlBalance = 'https://bittrex.com/api/v1.1/account/getbalances';
 const urlTicker = 'https://bittrex.com/api/v1.1/public/getticker?market=btc-';
 const urlPrice = 'https://api.coinmarketcap.com/v1/ticker/bitcoin/?convert=';
 
-const document = 'bittrex';
-const collection = dbConfig.data(document)['collections'][0];
+const collectionName = 'bittrex';
+const collection = dbConfig.data(collectionName)['collections'][0];
 
 /**
  * Primarily establishes connection to the MongoDB database and the bittrex collection.
@@ -17,7 +18,7 @@ const collection = dbConfig.data(document)['collections'][0];
  * If the collection does not exist, it will create it.
  */
 const MongoClient = require('mongodb').MongoClient;
-MongoClient.connect(dbConfig.url(document), function (err, db) {
+MongoClient.connect(dbConfig.url(collectionName), function (err, db) {
   if (err) {
     return console.log(err);
   }
@@ -42,6 +43,10 @@ MongoClient.connect(dbConfig.url(document), function (err, db) {
 const start = function (db) {
   schedule.scheduleJob('0 * * * * *', function () {
     getBalanceInformation(db);
+  });
+
+  schedule.scheduleJob('0 0 * * *', function () {
+    backupDatabase(db);
   });
 };
 
@@ -112,7 +117,7 @@ const getCurrentCurrencyInformation = function (db, jsonBalance) {
 
       try {
         const price_btc = parseFloat(jsonTicker['result']['Ask']);
-        const time = Math.floor(new Date().getTime() / 1000);
+        const time = Math.floor(new Date().getTime() / (1000 * 60));
 
         createDataEntry(db, currency, time, balance, price_btc);
       } catch (e) {
@@ -208,4 +213,17 @@ const saveData = function (db, currency, time, balance, price_btc, price_fiat) {
 const hmacSHA512Encrypt = function (str, key) {
   const hmac = crypto.createHmac("SHA512", key);
   return hmac.update(str).digest("HEX");
+};
+
+/**
+ * Backups up MongoDB database everyday at 12am.
+ *
+ * @param db MongoDB database object that will be backed up.
+ */
+const backupDatabase = function (db) {
+  backup({
+    uri: db.options.url,
+    dir: 'db_backups/',
+    collections: [ collectionName ]
+  })
 };

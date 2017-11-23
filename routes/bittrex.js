@@ -3,8 +3,8 @@ const router = express.Router();
 
 const dbConfig = require('../scripts/db-config');
 
-const document = 'bittrex';
-const collection = dbConfig.data(document)['collections'][0];
+const collectionName = 'bittrex';
+const collection = dbConfig.data(collectionName)['collections'][0];
 
 /**
  * Returns the main page for the chart data.
@@ -29,7 +29,7 @@ router.get('/api/currency', function(req, res) {
   }
 
   const MongoClient = require('mongodb').MongoClient;
-  MongoClient.connect(dbConfig.url(document), function (err, db) {
+  MongoClient.connect(dbConfig.url(collectionName), function (err, db) {
     if (err) {
       return console.log(err);
     }
@@ -47,7 +47,7 @@ router.get('/api/currency', function(req, res) {
  */
 router.get('/api/currency/all', function(req, res) {
   const MongoClient = require('mongodb').MongoClient;
-  MongoClient.connect(dbConfig.url(document), function (err, db) {
+  MongoClient.connect(dbConfig.url(collectionName), function (err, db) {
     if (err) {
       return console.log(err);
     }
