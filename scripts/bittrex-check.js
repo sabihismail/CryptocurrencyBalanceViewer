@@ -5,12 +5,14 @@ const request = require('request');
 const dbConfig = require('./db-config');
 const bittrexConfig = require('./bittrex-config');
 
-const urlBalance = 'https://bittrex.com/api/v1.1/account/getbalances';
-const urlTicker = 'https://bittrex.com/api/v1.1/public/getticker?market=btc-';
-const urlPrice = 'https://api.coinmarketcap.com/v1/ticker/bitcoin/?convert=';
+const URL_BALANCE = 'https://bittrex.com/api/v1.1/account/getbalances';
+const URL_TICKER = 'https://bittrex.com/api/v1.1/public/getticker?market=';
+const URL_PRICE = 'https://api.coinmarketcap.com/v1/ticker/bitcoin/?convert=';
 
-const collectionName = 'bittrex';
-const collection = dbConfig.data(collectionName)['collections'][0];
+const MARKET_BASE = 'BTC';
+
+const COLLECTION_NAME = 'bittrex';
+const COLLECTION = dbConfig.data(COLLECTION_NAME)['collections'][0];
 
 /**
  * Primarily establishes connection to the MongoDB database and the bittrex collection.
@@ -18,20 +20,20 @@ const collection = dbConfig.data(collectionName)['collections'][0];
  * If the collection does not exist, it will create it.
  */
 const MongoClient = require('mongodb').MongoClient;
-MongoClient.connect(dbConfig.url(collectionName), function (err, db) {
+MongoClient.connect(dbConfig.url(COLLECTION_NAME), function (err, db) {
   if (err) {
-    return console.log(err);
+    return console.error(err);
   }
 
-  db.createCollection(collection, function (err, res) {
+  db.createCollection(COLLECTION, function (err, res) {
     if (err) {
-      throw console.log(err);
+      throw console.error(err);
     }
 
-    console.log("Created " + collection);
+    console.log('Created ' + COLLECTION);
   });
 
-  console.log("Connected to server.");
+  console.log('Connected to server');
   start(db);
 });
 
@@ -52,7 +54,7 @@ const start = function (db) {
 
 /**
  * Retrieves the current balance information from bittrex through the API and supplies that data to
- * {@link getCurrentCurrencyInformation}.
+ * {@link #getCurrentCurrencyInformation}.
  *
  * The API requires a nonce (number used only once) which, for these purposes, is the current Unix time. The API also
  * requires an API key contained in {@link #bittrexConfig}. A signature in the header is also required which is created
@@ -62,96 +64,133 @@ const start = function (db) {
  */
 const getBalanceInformation = function (db) {
   const nonce = new Date().getTime();
-  const url = urlBalance + '?apikey=' + bittrexConfig.api_key + '&nonce=' + nonce;
+  const url = URL_BALANCE + '?apikey=' + bittrexConfig.api_key + '&nonce=' + nonce;
   const signature = hmacSHA512Encrypt(url, bittrexConfig.api_secret);
-  request({ url: url, method: "GET", headers: { apisign: signature } }, function (err, res, body) {
+  request({url: url, method: 'GET', headers: {apisign: signature}}, function (err, res, body) {
     if (err) {
-      return console.log(err);
+      return console.error(err);
     }
 
     try {
       const json = JSON.parse(body);
 
       if (json['success'] === false) {
-        return console.log(json['message']);
+        return console.error(url + '\n\n' + json);
       }
 
       getCurrentCurrencyInformation(db, json['result']);
     } catch (e) {
-      console.log("getBalanceInformation(): " + url + " " + body);
+      console.error('getBalanceInformation(): ' + '\n\n' + url + '\n\n' + body, e.stack);
     }
   });
 };
 
 /**
- * Gets current currency worth for each cryptocurrency contained in 'jsonBalance'. This includes the price of the
- * coin relative to bitcoin, and the price in fiat (government regulated currency such as USD or CAD).
+ * Gets values from 'jsonBalance' and extracts currency and balance for every coin in 'jsonBalance'.
  *
- * This data is then passed to {@link createDataEntry}.
+ * This data is then passed to {@link #requestCurrencyInformation} which actually retrieves the data.
  *
  * @param db The MongoDB database instance.
- * @param jsonBalance Current wallet balances returned from {@link getBalanceInformation}.
+ * @param jsonBalance Current wallet balances returned from {@link #getBalanceInformation}.
  */
 const getCurrentCurrencyInformation = function (db, jsonBalance) {
   for (let i = 0; i < jsonBalance.length; i++) {
     const currency = jsonBalance[i]['Currency'];
     const balance = parseFloat(jsonBalance[i]['Balance']);
 
-    const url = urlTicker + currency;
+    requestCurrencyInformation(db, currency, balance, true);
+  }
+};
 
-    request({ url: url, method: "GET" }, function (err, res, body) {
-      if (err) {
-        return console.log(err);
-      }
+/**
+ * Gets current currency worth for each cryptocurrency contained in 'jsonBalance'. This includes the price of the
+ * coin relative to {@link #MARKET_BASE}, and the price in fiat (government regulated currency such as USD or CAD).
+ *
+ * If 'INVALID_MARKET' message is received and the value is {@link #MARKET_BASE}, the value should be 1 as that is the
+ * worth to itself. If it is not {@link #MARKET_BASE}, it can be assumed that the market is different.
+ *
+ * If the data retrieved is in a different market (like Tether coin (USDT)) then the ask amount will be how many of
+ * the currency relative to {@link #MARKET_BASE}. Because of this, the value must be inverted to get the amount of
+ * {@link #MARKET_BASE} is worth to 1 of the current currency.
+ *
+ * This data is then passed to {@link #createDataEntry}.
+ *
+ * @param db The MongoDB database instance.
+ * @param currency Name of currency.
+ * @param balance Balance of currency in wallet.
+ * @param marketFirst TRUE if the {@link #MARKET_BASE} precedes the current currency name in the URL.
+ */
+const requestCurrencyInformation = function (db, currency, balance, marketFirst) {
+  let url;
+  if (marketFirst) {
+    url = URL_TICKER + MARKET_BASE + '-' + currency;
+  } else {
+    url = URL_TICKER + currency + '-' + MARKET_BASE;
+  }
 
+  request({url: url, method: 'GET'}, function (err, res, body) {
+    if (err) {
+      return console.error(err);
+    }
+
+    try {
       const jsonTicker = JSON.parse(body);
+
       if (jsonTicker['success'] === false) {
-        if (jsonTicker['message'] === 'INVALID_MARKET' && currency.toLowerCase() === 'btc') {
+        if (jsonTicker['message'] === 'INVALID_MARKET' && currency.toUpperCase() === MARKET_BASE) {
           jsonTicker['result'] = {
             Ask: 1
           }
+        } else if (jsonTicker['message'] === 'INVALID_MARKET' && currency.toUpperCase() !== MARKET_BASE) {
+          return requestCurrencyInformation(db, currency, balance, false);
         } else {
-          return console.log(jsonTicker['message']);
+          console.error(url + '\n\n' + currency + '\n\n' + balance);
         }
       }
 
-      try {
-        const price_btc = parseFloat(jsonTicker['result']['Ask']);
-        const time = Math.floor(new Date().getTime() / (1000 * 60));
-
-        createDataEntry(db, currency, time, balance, price_btc);
-      } catch (e) {
-        console.log("getCurrentCurrencyInformation() " + url + " " + jsonTicker + " " + jsonBalance);
+      let priceMarketBase = parseFloat(jsonTicker['result']['Ask']);
+      if (!marketFirst) {
+        priceMarketBase = 1 / priceMarketBase;
       }
-    });
-  }
+
+      const time = Math.floor(new Date().getTime() / (1000 * 60));
+
+      createDataEntry(db, currency, time, balance, priceMarketBase);
+    } catch (e) {
+      console.error('getCurrentCurrencyInformation() ' + url + '\n\n' + body + '\n\n' + currency + '\n\n');
+    }
+  });
 };
 
 /**
  * Data for each entry is generated in this method.
  *
- * The data is then passed into {@link saveData}.
+ * The data is then passed into {@link #saveData}.
  *
  * @param db The MongoDB database instance.
  * @param currency Name of currency coin.
  * @param time Current time in seconds since Unix epoch.
  * @param balance Current wallet balance in the currency.
- * @param price_btc Price of the currency in bitcoin.
+ * @param priceMarketBase Price of the currency in {@link #MARKET_BASE} .
  */
-const createDataEntry = function (db, currency, time, balance, price_btc) {
-  const url = urlPrice + bittrexConfig.fiat_currency;
+const createDataEntry = function (db, currency, time, balance, priceMarketBase) {
+  const url = URL_PRICE + bittrexConfig.fiat_currency;
 
-  request({ url: url, method: "GET" }, function (err, res, body) {
+  request({url: url, method: 'GET'}, function (err, res, body) {
     if (err) {
-      return console.log(err);
+      return console.error(err);
     }
 
-    const json = JSON.parse(body)[0];
-    const price = parseFloat(json['price_' + bittrexConfig.fiat_currency.toLowerCase()]);
+    try {
+      const json = JSON.parse(body);
 
-    const price_fiat = parseFloat((price_btc * price * balance).toFixed(2));
+      const price = parseFloat(json[0]['price_' + bittrexConfig.fiat_currency.toLowerCase()]);
+      const priceFiat = parseFloat((priceMarketBase * price * balance).toFixed(2));
 
-    saveData(db, currency, time, balance, price_btc, price_fiat);
+      saveData(db, currency, time, balance, priceMarketBase, priceFiat);
+    } catch (e) {
+      console.error(body);
+    }
   });
 };
 
@@ -166,7 +205,7 @@ const createDataEntry = function (db, currency, time, balance, price_btc) {
  *     {
  *       time: current_time_in_seconds_since_Unix_epoch,
  *       balance: current_balance_of_coin,
- *       price_btc: coin_worth_in_bitcoin's_current_price,
+ *       price_btc: coin_worth_in_ {@link #marketBase} 's_current_price,
  *       price_fiat: coin_worth_in_government_currency
  *     }
  *   ]
@@ -176,29 +215,29 @@ const createDataEntry = function (db, currency, time, balance, price_btc) {
  * @param currency Name of currency coin.
  * @param time Current time in seconds since Unix epoch.
  * @param balance Current wallet balance in the currency.
- * @param price_btc Price of the currency in bitcoin.
- * @param price_fiat Price of the currency in government regulated currency such as USD/CAD.
+ * @param priceMarketBase Price of the currency in {@link #MARKET_BASE}.
+ * @param priceFiat Price of the currency in government regulated currency such as USD/CAD.
  */
-const saveData = function (db, currency, time, balance, price_btc, price_fiat) {
-  db.collection(collection).findOne({ '_id': currency }, function (err, doc) {
+const saveData = function (db, currency, time, balance, priceMarketBase, priceFiat) {
+  db.collection(COLLECTION).findOne({'_id': currency}, function (err, doc) {
     const values = {
       'values': {
         time: time,
         balance: balance,
-        price_fiat: price_fiat
+        price_fiat: priceFiat
       }
     };
 
-    if (price_btc !== 1) {
-      values['values']['price_btc'] = price_btc;
+    if (priceMarketBase !== 1) {
+      values['values']['price_btc'] = priceMarketBase;
     }
 
     if (doc === null) {
-      db.collection(collection).insertOne({ '_id' : currency, 'values': [] }).then(function () {
-        db.collection(collection).updateOne({ '_id': currency }, { '$push': values });
+      db.collection(COLLECTION).insertOne({'_id': currency, 'values': []}).then(function () {
+        db.collection(COLLECTION).updateOne({'_id': currency}, {'$push': values});
       });
     } else {
-      db.collection(collection).updateOne({ '_id': currency }, { '$push': values });
+      db.collection(COLLECTION).updateOne({'_id': currency}, {'$push': values});
     }
   });
 };
@@ -211,8 +250,8 @@ const saveData = function (db, currency, time, balance, price_btc, price_fiat) {
  * @returns {string} Returns the generated hash.
  */
 const hmacSHA512Encrypt = function (str, key) {
-  const hmac = crypto.createHmac("SHA512", key);
-  return hmac.update(str).digest("HEX");
+  const hmac = crypto.createHmac('SHA512', key);
+  return hmac.update(str).digest('HEX');
 };
 
 /**
@@ -224,6 +263,6 @@ const backupDatabase = function (db) {
   backup({
     uri: db.options.url,
     dir: 'db_backups/',
-    collections: [ collectionName ]
+    collections: [COLLECTION_NAME]
   })
 };

@@ -22,7 +22,7 @@ module.exports = {
   url: function (server) {
     const db = config[server];
 
-    return "mongodb://" + db.host + ":" + db.port + "/" + db.db;
+    return 'mongodb://' + db.host + ':' + db.port + '/' + db.db;
   },
 
   /**
