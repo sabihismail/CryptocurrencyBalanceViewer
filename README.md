@@ -43,4 +43,5 @@ data charting and viewing. Licence:
 scheduler
 * [mongodb-backup](https://www.npmjs.com/package/mongodb-backup) - MongoDB 
 Database Backup
+* [socket.io](https://socket.io/) - Node.JS websocket server
 * [pug](https://pugjs.org/) - HTML template engine for Node.JS
