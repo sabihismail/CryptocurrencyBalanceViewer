@@ -67,7 +67,7 @@ router.get('/api/currency/all', function(req, res) {
  * @param callback Function to handle the data returned.
  */
 const getAllCoins = function (db, callback) {
-  db.collection(collection).distinct("_id").then(callback);
+  db.collection(collection).distinct('_id').then(callback);
 };
 
 /**
@@ -78,7 +78,7 @@ const getAllCoins = function (db, callback) {
  * @param callback Function to handle the data returned.
  */
 const getSpecificCoin = function (db, coin, callback) {
-  db.collection(collection).findOne({ "_id" : coin.toUpperCase() }).then(callback);
+  db.collection(collection).findOne({ '_id' : coin.toUpperCase() }).then(callback);
 };
 
 module.exports = router;

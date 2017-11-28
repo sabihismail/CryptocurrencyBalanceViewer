@@ -1,3 +1,5 @@
+let chart = null;
+
 /**
  * Retrieves all coins that exist in the database.
  *
@@ -11,6 +13,31 @@ $.ajax({
   success: function (json) {
     addData(json);
   }
+});
+
+console.log(window.location.href);
+
+const socket = io();
+socket.on('data', function (data) {
+  if (chart === null) {
+    return;
+  }
+
+  const newValues = parseData(data);
+
+  console.log(data);
+  console.log(newValues);
+  console.log(data['_id']);
+
+  for (let i = 0; i <= chart.series.length - 1; i++) {
+    if (chart.series[i].userOptions.name === data['_id']) {
+      chart.series[i].addPoint(newValues[0]);
+
+      break;
+    }
+  }
+
+  console.log(chart.get(data['_id']));
 });
 
 /**
@@ -54,7 +81,7 @@ function parseData(data) {
   const val = data['values'];
 
   for (let i = 0; i < val.length; i++) {
-    const time = val[i]['time'] * (1000 * 60);
+    const time = val[i]['time'] * 1000 * 60;
     const price_fiat = val[i]['price_fiat'];
 
     newData.push([time, price_fiat]);
@@ -69,7 +96,7 @@ function parseData(data) {
  * @param seriesOptions All the series data that is to be added to the chart.
  */
 function createChart(seriesOptions) {
-  Highcharts.stockChart('line-chart', {
+  chart = Highcharts.stockChart('line-chart', {
     chart: {
       type: 'area',
       zoomType: 'x'
@@ -169,7 +196,25 @@ function createChart(seriesOptions) {
     tooltip: {
       valueDecimals: 2,
       valuePrefix: '$',
-      shared: false
+      shared: false,
+
+      formatter: function () {
+        let s = '<b>' + moment(new Date(this.x)).format('MMM Do YYYY') + '</b>';
+        s += '<br><b>' + moment(new Date(this.x)).format('hh:mm:ss a') + '</b>';
+        let total = 0;
+
+        $.each(this.points, function () {
+          if (this.y !== 0) {
+            total += this.y;
+
+            s += '<br/>' + this.series.name + ': $' + Highcharts.numberFormat(this.y, 2);
+          }
+        });
+
+        s += '<br/><b>TOTAL: $' + Highcharts.numberFormat(total, 2) + '</b>';
+
+        return s;
+      }
     },
 
     series: seriesOptions
